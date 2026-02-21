@@ -73,13 +73,11 @@ function AdUnlock({ onUnlock }: { onUnlock: () => void }) {
     ins.setAttribute("data-ad-width", "320");
     ins.setAttribute("data-ad-height", "100");
     adRef.current.appendChild(ins);
-    // SDK가 이미 로드되었는지 확인
-    if (!document.querySelector('script[src*="ba.min.js"]')) {
-      const script = document.createElement("script");
-      script.src = "//t1.daumcdn.net/kas/static/ba.min.js";
-      script.async = true;
-      adRef.current.appendChild(script);
-    }
+    // 매번 새 스크립트를 로드해야 SDK가 새 ins 요소를 스캔함
+    const script = document.createElement("script");
+    script.src = "//t1.daumcdn.net/kas/static/ba.min.js";
+    script.async = true;
+    adRef.current.appendChild(script);
     loaded.current = true;
   }, []);
 
