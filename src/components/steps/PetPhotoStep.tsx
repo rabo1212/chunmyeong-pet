@@ -13,6 +13,7 @@ export default function PetPhotoStep({ onNext, onBack }: PetPhotoStepProps) {
   const { videoRef, photo, setPhoto, error, startCamera, takePhoto, retake } =
     useCamera();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     startCamera();
@@ -54,7 +55,6 @@ export default function PetPhotoStep({ onNext, onBack }: PetPhotoStepProps) {
                 playsInline
                 muted
                 className="w-full h-full object-cover"
-                style={{ transform: "scaleX(-1)" }}
               />
               <div className="photo-guide" />
             </>
@@ -74,7 +74,7 @@ export default function PetPhotoStep({ onNext, onBack }: PetPhotoStepProps) {
             <div className="flex flex-col items-center justify-center h-full text-center px-4">
               <p className="text-pet-cream/60 text-sm mb-4">{error}</p>
               <button
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => galleryInputRef.current?.click()}
                 className="btn-secondary text-sm"
               >
                 갤러리에서 선택
@@ -102,7 +102,7 @@ export default function PetPhotoStep({ onNext, onBack }: PetPhotoStepProps) {
                 촬영
               </button>
               <button
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => galleryInputRef.current?.click()}
                 className="btn-secondary flex-1"
               >
                 업로드
@@ -115,11 +115,20 @@ export default function PetPhotoStep({ onNext, onBack }: PetPhotoStepProps) {
           )}
         </div>
 
+        {/* 카메라 촬영용 (후면 카메라) */}
         <input
           ref={fileInputRef}
           type="file"
           accept="image/*"
           capture="environment"
+          onChange={handleFileUpload}
+          className="hidden"
+        />
+        {/* 갤러리 업로드용 (capture 없음 → 파일 선택 가능) */}
+        <input
+          ref={galleryInputRef}
+          type="file"
+          accept="image/*"
           onChange={handleFileUpload}
           className="hidden"
         />

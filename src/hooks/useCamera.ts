@@ -19,7 +19,7 @@ export function useCamera() {
     try {
       setError(null);
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 640 } },
+        video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 640 } },
       });
       streamRef.current = mediaStream;
       if (videoRef.current) {
