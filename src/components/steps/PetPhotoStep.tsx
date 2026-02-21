@@ -4,6 +4,31 @@ import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { useCamera } from "@/hooks/useCamera";
 
+/** 이미지를 최대 800x800, JPEG 0.7로 압축 (Vercel 4.5MB 한도 대응) */
+function compressImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 800;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        const ratio = Math.min(MAX / width, MAX / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { reject(new Error("Canvas not supported")); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", 0.7));
+    };
+    img.onerror = () => reject(new Error("이미지를 읽을 수 없습니다."));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 interface PetPhotoStepProps {
   onNext: (photoBase64: string | null) => void;
   onBack: () => void;
@@ -18,15 +43,19 @@ export default function PetPhotoStep({ onNext, onBack }: PetPhotoStepProps) {
     startCamera();
   }, [startCamera]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setPhoto(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImage(file);
+      setPhoto(compressed);
+    } catch {
+      // 압축 실패 시 원본 사용 (작은 파일일 경우)
+      const reader = new FileReader();
+      reader.onload = () => setPhoto(reader.result as string);
+      reader.readAsDataURL(file);
+    }
   };
 
   return (
