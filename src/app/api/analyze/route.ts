@@ -181,30 +181,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ result });
     }
 
-    // 파싱 실패 — rawText 자체를 interpretation으로 사용
+    // 파싱 실패 — 디버그용으로 rawText 일부 포함
     console.error("[analyze] JSON parse failed. rawText:", rawText.substring(0, 1000));
-
-    // rawText에서 코드/JSON 잔해 제거
-    const cleanedText = rawText
-      .replace(/```[\s\S]*?```/g, "")
-      .replace(/^\s*[{}[\]]\s*$/gm, "")
-      .trim();
 
     return NextResponse.json({
       result: {
         scores: { lucky: 80, charm: 85, charisma: 75, wealth: 78, noble: 82 },
         grade: "A",
         gradeTitle: "A급 매력둥이",
-        interpretation: cleanedText || "AI 분석 결과를 불러오지 못했습니다. 다시 시도해주세요!",
+        interpretation: rawText.length > 0
+          ? `[디버그] rawText 길이: ${rawText.length}, 앞 300자: ${rawText.substring(0, 300)}`
+          : "AI 응답이 비어있습니다. API 키를 확인해주세요.",
         pastLife: "",
         superPower: "",
         ownerMatch: "",
       },
     });
   } catch (error) {
-    console.error("Analysis error:", error);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error("Analysis error:", errMsg);
     return NextResponse.json(
-      { error: "분석 중 오류가 발생했습니다. 다시 시도해주세요." },
+      { error: `분석 중 오류: ${errMsg}` },
       { status: 500 }
     );
   }
