@@ -19,6 +19,29 @@ function checkRateLimit(ip: string): boolean {
   return true;
 }
 
+/** AI 응답에서 JSON만 깨끗하게 추출 */
+function extractJSON(raw: string): Record<string, unknown> | null {
+  // 1) 코드블록 안의 JSON 추출 시도
+  const codeBlockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const textToParse = codeBlockMatch ? codeBlockMatch[1].trim() : raw;
+
+  // 2) { } 매칭
+  const jsonMatch = textToParse.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch {
+    // 3) 흔한 JSON 오류 수정 시도: trailing comma
+    const cleaned = jsonMatch[0].replace(/,\s*([}\]])/g, "$1");
+    try {
+      return JSON.parse(cleaned);
+    } catch {
+      return null;
+    }
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const ip = request.headers.get("x-forwarded-for") ?? "unknown";
@@ -69,27 +92,28 @@ export async function POST(request: NextRequest) {
     const rawText =
       response.content[0].type === "text" ? response.content[0].text : "";
 
-    // JSON 파싱
-    try {
-      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return NextResponse.json({ result: parsed });
-      }
-    } catch {
-      // JSON 파싱 실패
+    // JSON 추출
+    const parsed = extractJSON(rawText);
+    if (parsed) {
+      return NextResponse.json({ result: parsed });
     }
 
-    // fallback
+    // fallback — JSON 파싱 완전 실패 시 rawText에서 코드/JSON 잔해 제거
+    const cleanedText = rawText
+      .replace(/```[\s\S]*?```/g, "")
+      .replace(/[{}[\]]/g, "")
+      .replace(/"/g, "")
+      .trim();
+
     return NextResponse.json({
       result: {
         scores: { lucky: 80, charm: 85, charisma: 75, wealth: 78, noble: 82 },
         grade: "A",
         gradeTitle: "A급 매력둥이",
-        interpretation: rawText,
-        pastLife: "전생의 기억을 해독 중입니다...",
-        superPower: "주인의 마음을 읽는 텔레파시 Lv.80",
-        ownerMatch: hasOwner ? "궁합 분석이 해석 본문에 포함되어 있습니다." : undefined,
+        interpretation: cleanedText || "AI가 관상을 분석했지만 결과를 정리하는 중 문제가 발생했습니다. 다시 시도해주세요!",
+        pastLife: "",
+        superPower: "",
+        ownerMatch: "",
       },
     });
   } catch (error) {
