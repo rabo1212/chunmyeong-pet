@@ -23,23 +23,101 @@ function checkRateLimit(ip: string): boolean {
 function extractJSON(raw: string): Record<string, unknown> | null {
   // 1) 코드블록 안의 JSON 추출 시도
   const codeBlockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const textToParse = codeBlockMatch ? codeBlockMatch[1].trim() : raw;
-
-  // 2) { } 매칭
-  const jsonMatch = textToParse.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return null;
-
-  try {
-    return JSON.parse(jsonMatch[0]);
-  } catch {
-    // 3) 흔한 JSON 오류 수정 시도: trailing comma
-    const cleaned = jsonMatch[0].replace(/,\s*([}\]])/g, "$1");
+  if (codeBlockMatch) {
     try {
-      return JSON.parse(cleaned);
+      return JSON.parse(codeBlockMatch[1].trim());
     } catch {
-      return null;
+      // 코드블록 파싱 실패 → 다음 방법 시도
     }
   }
+
+  // 2) 가장 바깥쪽 { } 추출 (중첩된 {} 포함)
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (raw[i] === "}") {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        const candidate = raw.substring(start, i + 1);
+        try {
+          return JSON.parse(candidate);
+        } catch {
+          // trailing comma 수정 시도
+          const cleaned = candidate.replace(/,\s*([}\]])/g, "$1");
+          try {
+            return JSON.parse(cleaned);
+          } catch {
+            // 이 블록은 실패, 다음 { 를 찾기
+            start = -1;
+          }
+        }
+      }
+    }
+  }
+
+  // 3) 잘린 JSON 복구 시도 (max_tokens로 잘린 경우)
+  const firstBrace = raw.indexOf("{");
+  if (firstBrace !== -1) {
+    let truncated = raw.substring(firstBrace);
+    // 코드블록 닫는 백틱 제거
+    truncated = truncated.replace(/`+\s*$/, "");
+    // 잘린 문자열 닫기: 마지막 열린 따옴표 찾아서 닫기
+    const lastQuote = truncated.lastIndexOf('"');
+    if (lastQuote > 0) {
+      const beforeQuote = truncated.substring(0, lastQuote);
+      const openQuotes = (beforeQuote.match(/(?<!\\)"/g) || []).length;
+      if (openQuotes % 2 === 0) {
+        // 따옴표가 짝수 → lastQuote는 열린 따옴표, 내용 잘라내기
+        truncated = truncated.substring(0, lastQuote) + '""';
+      } else {
+        // 홀수 → lastQuote가 닫는 따옴표, 그 뒤를 정리
+        truncated = truncated.substring(0, lastQuote + 1);
+      }
+    }
+    // 누락된 닫는 괄호 추가
+    const openBraces = (truncated.match(/\{/g) || []).length;
+    const closeBraces = (truncated.match(/\}/g) || []).length;
+    // trailing comma 제거
+    truncated = truncated.replace(/,\s*$/, "");
+    truncated += "}".repeat(Math.max(0, openBraces - closeBraces));
+
+    try {
+      return JSON.parse(truncated);
+    } catch {
+      // trailing comma 한번 더 정리
+      const cleaned = truncated.replace(/,\s*([}\]])/g, "$1");
+      try {
+        return JSON.parse(cleaned);
+      } catch {
+        // 최종 실패
+      }
+    }
+  }
+
+  return null;
+}
+
+/** 결과 객체 검증 및 기본값 채움 */
+function validateResult(parsed: Record<string, unknown>, hasOwner: boolean) {
+  const scores = (parsed.scores as Record<string, number>) || {};
+  return {
+    scores: {
+      lucky: Math.min(100, Math.max(0, Number(scores.lucky) || 75)),
+      charm: Math.min(100, Math.max(0, Number(scores.charm) || 75)),
+      charisma: Math.min(100, Math.max(0, Number(scores.charisma) || 75)),
+      wealth: Math.min(100, Math.max(0, Number(scores.wealth) || 75)),
+      noble: Math.min(100, Math.max(0, Number(scores.noble) || 75)),
+    },
+    grade: (parsed.grade as string) || "A",
+    gradeTitle: (parsed.gradeTitle as string) || "A급 매력둥이",
+    interpretation: (parsed.interpretation as string) || "",
+    pastLife: (parsed.pastLife as string) || "",
+    superPower: (parsed.superPower as string) || "",
+    ownerMatch: hasOwner ? ((parsed.ownerMatch as string) || "") : "",
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -83,7 +161,7 @@ export async function POST(request: NextRequest) {
 
     const response = await anthropic.messages.create({
       model: "claude-3-haiku-20240307",
-      max_tokens: 4000,
+      max_tokens: 4096,
       temperature: 0.8,
       system: PET_SYSTEM_PROMPT,
       messages: [{ role: "user", content }],
@@ -92,17 +170,24 @@ export async function POST(request: NextRequest) {
     const rawText =
       response.content[0].type === "text" ? response.content[0].text : "";
 
+    console.log("[analyze] rawText length:", rawText.length);
+    console.log("[analyze] rawText preview:", rawText.substring(0, 500));
+
     // JSON 추출
     const parsed = extractJSON(rawText);
     if (parsed) {
-      return NextResponse.json({ result: parsed });
+      console.log("[analyze] JSON parsed successfully, keys:", Object.keys(parsed));
+      const result = validateResult(parsed, hasOwner);
+      return NextResponse.json({ result });
     }
 
-    // fallback — JSON 파싱 완전 실패 시 rawText에서 코드/JSON 잔해 제거
+    // 파싱 실패 — rawText 자체를 interpretation으로 사용
+    console.error("[analyze] JSON parse failed. rawText:", rawText.substring(0, 1000));
+
+    // rawText에서 코드/JSON 잔해 제거
     const cleanedText = rawText
       .replace(/```[\s\S]*?```/g, "")
-      .replace(/[{}[\]]/g, "")
-      .replace(/"/g, "")
+      .replace(/^\s*[{}[\]]\s*$/gm, "")
       .trim();
 
     return NextResponse.json({
@@ -110,7 +195,7 @@ export async function POST(request: NextRequest) {
         scores: { lucky: 80, charm: 85, charisma: 75, wealth: 78, noble: 82 },
         grade: "A",
         gradeTitle: "A급 매력둥이",
-        interpretation: cleanedText || "AI가 관상을 분석했지만 결과를 정리하는 중 문제가 발생했습니다. 다시 시도해주세요!",
+        interpretation: cleanedText || "AI 분석 결과를 불러오지 못했습니다. 다시 시도해주세요!",
         pastLife: "",
         superPower: "",
         ownerMatch: "",
