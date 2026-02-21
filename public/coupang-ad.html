@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: transparent; overflow: hidden; }
+</style>
+</head>
+<body>
+<div id="coupang-ad"></div>
+<script>
+  // g.js 로드 후 document.write를 캡처해서 #coupang-ad에 삽입
+  (function() {
+    var container = document.getElementById('coupang-ad');
+    var originalWrite = document.write.bind(document);
+    var captured = '';
+    document.write = function(html) { captured += html; };
+
+    var script = document.createElement('script');
+    script.src = 'https://ads-partners.coupang.com/g.js';
+    script.onload = function() {
+      try {
+        new PartnersCoupang.G({"id":966819,"template":"carousel","trackingCode":"AF8817271","width":"320","height":"100","tsource":""});
+      } catch(e) {}
+      if (captured) {
+        container.innerHTML = captured;
+        // 삽입된 스크립트 실행
+        var scripts = container.querySelectorAll('script');
+        scripts.forEach(function(s) {
+          var ns = document.createElement('script');
+          if (s.src) ns.src = s.src;
+          else ns.textContent = s.textContent;
+          s.parentNode.replaceChild(ns, s);
+        });
+      }
+      document.write = originalWrite;
+    };
+    script.onerror = function() {
+      document.write = originalWrite;
+    };
+    document.head.appendChild(script);
+  })();
+</script>
+</body>
+</html>
