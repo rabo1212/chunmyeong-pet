@@ -12,7 +12,6 @@ interface PetPhotoStepProps {
 export default function PetPhotoStep({ onNext, onBack }: PetPhotoStepProps) {
   const { videoRef, photo, setPhoto, error, startCamera, takePhoto, retake } =
     useCamera();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -115,15 +114,6 @@ export default function PetPhotoStep({ onNext, onBack }: PetPhotoStepProps) {
           )}
         </div>
 
-        {/* 카메라 촬영용 (후면 카메라) */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={handleFileUpload}
-          className="hidden"
-        />
         {/* 갤러리 업로드용 (capture 없음 → 파일 선택 가능) */}
         <input
           ref={galleryInputRef}

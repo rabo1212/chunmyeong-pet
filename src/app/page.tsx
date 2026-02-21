@@ -50,10 +50,12 @@ export default function Home() {
       setError(null);
 
       try {
+        // API 전송용 body 생성 후 원본 참조 해제 (메모리 최적화)
+        const reqBody = JSON.stringify({ petInfo, ownerInfo, photoBase64 });
         const res = await fetch("/api/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ petInfo, ownerInfo, photoBase64 }),
+          body: reqBody,
         });
 
         if (!res.ok) {

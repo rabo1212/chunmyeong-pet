@@ -135,6 +135,22 @@ export async function POST(request: NextRequest) {
     const ownerInfo: OwnerInfo | null = body.ownerInfo ?? null;
     let photoBase64: string | null = body.photoBase64 ?? null;
 
+    // 입력 검증
+    if (!petInfo || !petInfo.petType || !petInfo.gender) {
+      return NextResponse.json(
+        { error: "반려동물 정보가 올바르지 않습니다." },
+        { status: 400 }
+      );
+    }
+
+    // 사진 크기 제한 (약 10MB base64)
+    if (photoBase64 && photoBase64.length > 10_000_000) {
+      return NextResponse.json(
+        { error: "사진 파일이 너무 큽니다. 더 작은 사진을 사용해주세요." },
+        { status: 400 }
+      );
+    }
+
     const anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY!,
     });
@@ -170,19 +186,12 @@ export async function POST(request: NextRequest) {
     const rawText =
       response.content[0].type === "text" ? response.content[0].text : "";
 
-    console.log("[analyze] rawText length:", rawText.length);
-    console.log("[analyze] rawText preview:", rawText.substring(0, 500));
-
     // JSON 추출
     const parsed = extractJSON(rawText);
     if (parsed) {
-      console.log("[analyze] JSON parsed successfully, keys:", Object.keys(parsed));
       const result = validateResult(parsed, hasOwner);
       return NextResponse.json({ result });
     }
-
-    // 파싱 실패 — rawText 자체를 interpretation으로 사용
-    console.error("[analyze] JSON parse failed. rawText:", rawText.substring(0, 500));
 
     const cleanedText = rawText
       .replace(/```[\s\S]*?```/g, "")

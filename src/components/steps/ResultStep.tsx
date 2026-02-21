@@ -27,15 +27,23 @@ const GRADE_EMOJI: Record<string, string> = {
   SS: "✨", S: "⭐", A: "🌟", B: "💫", C: "🌈",
 };
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 function parseMarkdown(text: string): string {
   if (!text) return "";
-  return text
+  // XSS 방지: HTML 태그 이스케이프 후 마크다운 변환
+  return escapeHtml(text)
     .replace(/```[\s\S]*?```/g, "")
     .replace(/^### (.*)/gm, '<h3 class="font-bold text-base text-pet-apricot mt-4 mb-1">$1</h3>')
     .replace(/^## (.*)/gm, '<h2 class="font-bold text-lg text-pet-apricot mt-6 mb-2">$1</h2>')
     .replace(/^# (.*)/gm, '<h2 class="font-bold text-xl text-pet-apricot mt-6 mb-2">$1</h2>')
     .replace(/\*\*(.*?)\*\*/g, '<strong class="text-pet-apricot">$1</strong>')
-    .replace(/\*(.*?)\*/g, "<em>$1</em>")
+    .replace(/(?<!\*)\*(?!\*)(.*?)(?<!\*)\*(?!\*)/g, "<em>$1</em>")
     .replace(/^\d+\. (.*)/gm, '<li class="ml-4 text-sm leading-relaxed text-pet-cream/80 list-decimal">$1</li>')
     .replace(/^- (.*)/gm, '<li class="ml-4 text-sm leading-relaxed text-pet-cream/80 list-disc">$1</li>')
     .replace(/\n\n/g, '<div class="h-3"></div>')
@@ -56,7 +64,7 @@ function AdUnlock({ onUnlock }: { onUnlock: () => void }) {
   const loaded = useRef(false);
 
   useEffect(() => {
-    // 카카오 AdFit 로드
+    // 카카오 AdFit 로드 (중복 방지)
     if (loaded.current || !adRef.current) return;
     const ins = document.createElement("ins");
     ins.className = "kakao_ad_area";
@@ -65,10 +73,13 @@ function AdUnlock({ onUnlock }: { onUnlock: () => void }) {
     ins.setAttribute("data-ad-width", "320");
     ins.setAttribute("data-ad-height", "100");
     adRef.current.appendChild(ins);
-    const script = document.createElement("script");
-    script.src = "//t1.daumcdn.net/kas/static/ba.min.js";
-    script.async = true;
-    adRef.current.appendChild(script);
+    // SDK가 이미 로드되었는지 확인
+    if (!document.querySelector('script[src*="ba.min.js"]')) {
+      const script = document.createElement("script");
+      script.src = "//t1.daumcdn.net/kas/static/ba.min.js";
+      script.async = true;
+      adRef.current.appendChild(script);
+    }
     loaded.current = true;
   }, []);
 
