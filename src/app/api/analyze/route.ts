@@ -19,16 +19,67 @@ function checkRateLimit(ip: string): boolean {
   return true;
 }
 
+/** JSON 문자열 값 안의 실제 줄바꿈/탭을 이스케이프 */
+function fixControlCharsInStrings(text: string): string {
+  let result = "";
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (escaped) {
+      result += ch;
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\" && inString) {
+      result += ch;
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      result += ch;
+      continue;
+    }
+    if (inString) {
+      if (ch === "\n") { result += "\\n"; continue; }
+      if (ch === "\r") { result += "\\r"; continue; }
+      if (ch === "\t") { result += "\\t"; continue; }
+    }
+    result += ch;
+  }
+  return result;
+}
+
+/** 안전한 JSON.parse (제어문자 수정 + trailing comma 제거) */
+function safeParse(text: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(text);
+  } catch {
+    // 제어문자 수정 후 재시도
+    const fixed = fixControlCharsInStrings(text);
+    try {
+      return JSON.parse(fixed);
+    } catch {
+      // trailing comma 제거 후 재시도
+      const cleaned = fixed.replace(/,\s*([}\]])/g, "$1");
+      try {
+        return JSON.parse(cleaned);
+      } catch {
+        return null;
+      }
+    }
+  }
+}
+
 /** AI 응답에서 JSON만 깨끗하게 추출 */
 function extractJSON(raw: string): Record<string, unknown> | null {
   // 1) 코드블록 안의 JSON 추출 시도
   const codeBlockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (codeBlockMatch) {
-    try {
-      return JSON.parse(codeBlockMatch[1].trim());
-    } catch {
-      // 코드블록 파싱 실패 → 다음 방법 시도
-    }
+    const parsed = safeParse(codeBlockMatch[1].trim());
+    if (parsed) return parsed;
   }
 
   // 2) 가장 바깥쪽 { } 추출 (중첩된 {} 포함)
@@ -42,18 +93,9 @@ function extractJSON(raw: string): Record<string, unknown> | null {
       depth--;
       if (depth === 0 && start !== -1) {
         const candidate = raw.substring(start, i + 1);
-        try {
-          return JSON.parse(candidate);
-        } catch {
-          // trailing comma 수정 시도
-          const cleaned = candidate.replace(/,\s*([}\]])/g, "$1");
-          try {
-            return JSON.parse(cleaned);
-          } catch {
-            // 이 블록은 실패, 다음 { 를 찾기
-            start = -1;
-          }
-        }
+        const parsed = safeParse(candidate);
+        if (parsed) return parsed;
+        start = -1;
       }
     }
   }
@@ -62,39 +104,22 @@ function extractJSON(raw: string): Record<string, unknown> | null {
   const firstBrace = raw.indexOf("{");
   if (firstBrace !== -1) {
     let truncated = raw.substring(firstBrace);
-    // 코드블록 닫는 백틱 제거
     truncated = truncated.replace(/`+\s*$/, "");
-    // 잘린 문자열 닫기: 마지막 열린 따옴표 찾아서 닫기
     const lastQuote = truncated.lastIndexOf('"');
     if (lastQuote > 0) {
       const beforeQuote = truncated.substring(0, lastQuote);
       const openQuotes = (beforeQuote.match(/(?<!\\)"/g) || []).length;
       if (openQuotes % 2 === 0) {
-        // 따옴표가 짝수 → lastQuote는 열린 따옴표, 내용 잘라내기
         truncated = truncated.substring(0, lastQuote) + '""';
       } else {
-        // 홀수 → lastQuote가 닫는 따옴표, 그 뒤를 정리
         truncated = truncated.substring(0, lastQuote + 1);
       }
     }
-    // 누락된 닫는 괄호 추가
     const openBraces = (truncated.match(/\{/g) || []).length;
     const closeBraces = (truncated.match(/\}/g) || []).length;
-    // trailing comma 제거
     truncated = truncated.replace(/,\s*$/, "");
     truncated += "}".repeat(Math.max(0, openBraces - closeBraces));
-
-    try {
-      return JSON.parse(truncated);
-    } catch {
-      // trailing comma 한번 더 정리
-      const cleaned = truncated.replace(/,\s*([}\]])/g, "$1");
-      try {
-        return JSON.parse(cleaned);
-      } catch {
-        // 최종 실패
-      }
-    }
+    return safeParse(truncated);
   }
 
   return null;
