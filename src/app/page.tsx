@@ -29,6 +29,7 @@ export default function Home() {
   const [petInfo, setPetInfo] = useState<PetInfo | null>(null);
   const [ownerInfo, setOwnerInfo] = useState<OwnerInfo | null>(null);
   const [result, setResult] = useState<PetAnalysisResult | null>(null);
+  const [petPhoto, setPetPhoto] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handlePetInfoNext = useCallback((info: PetInfo) => {
@@ -44,6 +45,7 @@ export default function Home() {
   const handlePhotoNext = useCallback(
     async (photoBase64: string | null) => {
       if (!petInfo) return;
+      setPetPhoto(photoBase64);
       setStep("analyzing");
       setError(null);
 
@@ -74,6 +76,7 @@ export default function Home() {
     setPetInfo(null);
     setOwnerInfo(null);
     setResult(null);
+    setPetPhoto(null);
     setError(null);
     setStep("start");
   }, []);
@@ -132,6 +135,7 @@ export default function Home() {
             key="result"
             result={result}
             petName={petInfo?.name}
+            petPhoto={petPhoto}
             onRestart={handleRestart}
           />
         )}
